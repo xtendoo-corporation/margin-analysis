@@ -1,0 +1,52 @@
+name: Sync branches from upstream
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    name: Sync branches from OCA/margin-analysis
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GIT_PUSH_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/OCA/margin-analysis.git
+
+      - name: Fetch all branches from upstream
+        run: git fetch upstream
+
+      - name: Sync branches
+        run: |
+          initial_branch=$(git symbolic-ref --short HEAD)
+          for branch in $(git branch -r | grep 'upstream/' | grep -v 'upstream/HEAD' | sed 's|upstream/||'); do
+            echo "Syncing branch: $branch"
+            if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+              # Explicitly use origin/$branch to avoid DWIM ambiguity when both
+              # origin/$branch and upstream/$branch exist as remote tracking refs.
+              git checkout -b "$branch" "origin/$branch"
+              git merge --ff-only "upstream/$branch" || {
+                echo "Fast-forward merge failed for $branch, skipping."
+                git checkout "$initial_branch"
+                git branch -D "$branch"
+                continue
+              }
+            else
+              git checkout -b "$branch" "upstream/$branch"
+            fi
+            git push origin "$branch"
+            git checkout "$initial_branch"
+            git branch -D "$branch"
+          done
