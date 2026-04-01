@@ -34,10 +34,13 @@ jobs:
           for branch in $(git branch -r | grep 'upstream/' | grep -v 'upstream/HEAD' | sed 's|upstream/||'); do
             echo "Syncing branch: $branch"
             if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-              git checkout "$branch"
+              # Explicitly use origin/$branch to avoid DWIM ambiguity when both
+              # origin/$branch and upstream/$branch exist as remote tracking refs.
+              git checkout -b "$branch" "origin/$branch"
               git merge --ff-only "upstream/$branch" || {
                 echo "Fast-forward merge failed for $branch, skipping."
                 git checkout "$initial_branch"
+                git branch -D "$branch"
                 continue
               }
             else
@@ -45,4 +48,5 @@ jobs:
             fi
             git push origin "$branch"
             git checkout "$initial_branch"
+            git branch -D "$branch"
           done
